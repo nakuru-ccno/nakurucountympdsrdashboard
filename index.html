@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>MPDSR Nakuru County Dashboard</title>
 
-  <!-- Tailwind CSS (CDN) -->
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <script>
@@ -22,17 +22,29 @@
 
   <style>
     html, body, #root { height: 100%; margin: 0; padding: 0; }
-    /* Minor helper for modal scroll lock */
     .no-scroll { overflow: hidden; height: 100%; }
   </style>
 </head>
-<body class="font-sans bg-gray-100">
 
-  <div id="root" class="h-full"></div>
+<body class="font-sans bg-gray-100 h-full">
 
-<!-- App script (vanilla JS) -->
-<script type="module" src="./supabase.js"></script>
-<script type="module" src="./script.js"></script>
+  <!-- Root app container -->
+  <div id="root" class="h-full w-full"></div>
+
+  <!-- Load Supabase client -->
+  <script type="module">
+    // Make Supabase globally available
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+    window.supabase = createClient(
+      "https://YOUR-SUPABASE-PROJECT-ID.supabase.co",
+      "YOUR-SUPABASE-ANON-KEY"
+    );
+  </script>
+
+  <!-- Load your project scripts (GitHub Pages paths FIXED!) -->
+  <script type="module" src="/nakurucountympdsrdashboard/supabase.js"></script>
+  <script type="module" src="/nakurucountympdsrdashboard/script.js"></script>
 
 </body>
 </html>
