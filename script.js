@@ -4,11 +4,11 @@
 import { supabase } from "./supabase.js";
 
 // Import renderSignUp for seamless routing
-import { renderSignUp } from "/nakurucountympdsrdashboard/signup.js";
+import { renderSignUp } from "./signup.js";  // adjust relative path as needed
 
 /* ===========================
     Utility helpers and Globals
-    =========================== */
+   =========================== */
 const root = document.getElementById("root");
 export const $ = (sel, ctx = document) => ctx.querySelector(sel);
 export const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel));
@@ -19,12 +19,11 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString() : "";
 const statusClasses = s => s === 'Pending Review' ? 'status-pending' : (s==='Audit Complete' ? 'status-complete' : (s==='Data Entry' ? 'status-entry' : (s==='Closed' ? 'closed' : 'status-default')));
 
 /* ===========================
-    Supabase Client Access & State
-    =========================== */
-const supabase = window.supabase;
+    Supabase API wrappers and State
+   =========================== */
 export const state = {
-    user: null, 
-    view: 'login', 
+    user: null,
+    view: 'login',
     filters: { q: '', subcounty: 'All', status: 'All' },
     data: {
       facilities: [],
@@ -37,10 +36,9 @@ export const state = {
     modal: { visible: false, mode: 'new', payload: null }
 };
 
-
 /* ===========================
     Supabase API wrappers (All CRUD/Fetch Logic)
-    =========================== */
+   =========================== */
 
 export async function signIn(email, password) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -48,7 +46,7 @@ export async function signIn(email, password) {
     return data;
 }
 
-export async function signOut() { 
+export async function signOut() {
     const { error } = await supabase.auth.signOut();
     if (error) console.error("Sign out error:", error);
     state.user = null;
@@ -65,8 +63,8 @@ export async function fetchFacilities() {
 
 export async function fetchUserProfile(user_id) {
     const { data, error } = await supabase.from('mpdsr_users').select('*, facilities(facility_name)').eq('user_id', user_id).single();
-    if (error) console.error("Error fetching profile:", error); 
-    // Fallback profile if the database record hasn't been created yet
+    if (error) console.error("Error fetching profile:", error);
+    // fallback profile if missing
     return data || { full_name: 'New User', user_level: 'Data Entry', facilities: { facility_name: 'N/A' } };
 }
 
@@ -84,29 +82,85 @@ export async function fetchCases() {
     return data;
 }
 
-// --- Case/Review/Recommendation CRUD functions (omitted for brevity, assume they are fully included here) ---
-export async function createCase(payload) {/* ... */ const { data, error } = await supabase.from('mpdsr_cases').insert([payload]).select().single(); if (error) throw error; state.data.cases.unshift(data); return data;}
-export async function updateCase(case_id, payload) {/* ... */ const { data, error } = await supabase.from('mpdsr_cases').update(payload).eq('case_id', case_id).select().single(); if (error) throw error; const idx = state.data.cases.findIndex(c => c.case_id === case_id); if (idx >= 0) state.data.cases[idx] = data; return data; }
-export async function deleteCase(case_id) {/* ... */ const { error } = await supabase.from('mpdsr_cases').delete().eq('case_id', case_id); if (error) throw error; state.data.cases = state.data.cases.filter(c => c.case_id !== case_id); return true; }
-export async function fetchReviews(case_id) {/* ... */ const { data, error } = await supabase.from('mpdsr_reviews').select('*').eq('case_id', case_id).order('review_date', { ascending: false }); if (error) throw error; state.data.reviews[case_id] = data || []; return data; }
-export async function createReview(payload) {/* ... */ const { data, error } = await supabase.from('mpdsr_reviews').insert([payload]).select().single(); if (error) throw error; if (!state.data.reviews[payload.case_id]) state.data.reviews[payload.case_id] = []; state.data.reviews[payload.case_id].unshift(data); return data; }
-export async function fetchRecommendations(review_id) {/* ... */ const { data, error } = await supabase.from('mpdsr_recommendations').select('*').eq('review_id', review_id).order('created_at', { ascending: false }); if (error) throw error; state.data.recommendations[review_id] = data || []; return data; }
-export async function updateRecommendation(recommendation_id, payload) {/* ... */ const { data, error } = await supabase.from('mpdsr_recommendations').update(payload).eq('recommendation_id', recommendation_id).select().single(); if (error) throw error; for (const rId in state.data.recommendations) { const idx = state.data.recommendations[rId].findIndex(x => x.recommendation_id === recommendation_id); if (idx >= 0) { state.data.recommendations[rId][idx] = data; break; } } return data;}
+export async function createCase(payload) {
+    const { data, error } = await supabase.from('mpdsr_cases').insert([payload]).select().single();
+    if (error) throw error;
+    state.data.cases.unshift(data);
+    return data;
+}
+
+export async function updateCase(case_id, payload) {
+    const { data, error } = await supabase.from('mpdsr_cases').update(payload).eq('case_id', case_id).select().single();
+    if (error) throw error;
+    const idx = state.data.cases.findIndex(c => c.case_id === case_id);
+    if (idx >= 0) state.data.cases[idx] = data;
+    return data;
+}
+
+export async function deleteCase(case_id) {
+    const { error } = await supabase.from('mpdsr_cases').delete().eq('case_id', case_id);
+    if (error) throw error;
+    state.data.cases = state.data.cases.filter(c => c.case_id !== case_id);
+    return true;
+}
+
+export async function fetchReviews(case_id) {
+    const { data, error } = await supabase.from('mpdsr_reviews').select('*').eq('case_id', case_id).order('review_date', { ascending: false });
+    if (error) throw error;
+    state.data.reviews[case_id] = data || [];
+    return data;
+}
+
+export async function createReview(payload) {
+    const { data, error } = await supabase.from('mpdsr_reviews').insert([payload]).select().single();
+    if (error) throw error;
+    if (!state.data.reviews[payload.case_id]) state.data.reviews[payload.case_id] = [];
+    state.data.reviews[payload.case_id].unshift(data);
+    return data;
+}
+
+export async function fetchRecommendations(review_id) {
+    const { data, error } = await supabase.from('mpdsr_recommendations').select('*').eq('review_id', review_id).order('created_at', { ascending: false });
+    if (error) throw error;
+    state.data.recommendations[review_id] = data || [];
+    return data;
+}
+
+export async function updateRecommendation(recommendation_id, payload) {
+    const { data, error } = await supabase.from('mpdsr_recommendations').update(payload).eq('recommendation_id', recommendation_id).select().single();
+    if (error) throw error;
+    for (const rId in state.data.recommendations) {
+        const idx = state.data.recommendations[rId].findIndex(x => x.recommendation_id === recommendation_id);
+        if (idx >= 0) {
+            state.data.recommendations[rId][idx] = data;
+            break;
+        }
+    }
+    return data;
+}
+
 export async function fetchDashboardMetrics() {
-    const MOCK_LIVE_BIRTHS = 18000; 
+    const MOCK_LIVE_BIRTHS = 18000;
     const { count: maternalCount } = await supabase.from('mpdsr_cases').select('*', { count: 'exact', head: true }).eq('case_type', 'Maternal');
     const { count: perinatalCount } = await supabase.from('mpdsr_cases').select('*', { count: 'exact', head: true }).eq('case_type', 'Perinatal');
     const { count: totalCases } = await supabase.from('mpdsr_cases').select('*', { count: 'exact', head: true });
     const { count: reviewedCases } = await supabase.from('mpdsr_cases').select('*', { count: 'exact', head: true }).eq('is_reviewed', true);
     const { count: totalRecs } = await supabase.from('mpdsr_recommendations').select('*', { count: 'exact', head: true });
     const { count: closedRecs } = await supabase.from('mpdsr_recommendations').select('*', { count: 'exact', head: true }).eq('status', 'Closed');
-    return { maternalDeaths: maternalCount || 0, perinatalDeaths: perinatalCount || 0, totalCases: totalCases || 0, reviewedCases: reviewedCases || 0, totalRecommendations: totalRecs || 0, closedRecommendations: closedRecs || 0, mockLiveBirths: MOCK_LIVE_BIRTHS, };
+    return {
+        maternalDeaths: maternalCount || 0,
+        perinatalDeaths: perinatalCount || 0,
+        totalCases: totalCases || 0,
+        reviewedCases: reviewedCases || 0,
+        totalRecommendations: totalRecs || 0,
+        closedRecommendations: closedRecs || 0,
+        mockLiveBirths: MOCK_LIVE_BIRTHS,
+    };
 }
-
 
 /* ===========================
     Authentication handling + init
-    =========================== */
+   =========================== */
 
 async function initAuth() {
     supabase.auth.onAuthStateChange(async (event, session) => {
@@ -115,7 +169,9 @@ async function initAuth() {
             try {
                 state.data.profile = await fetchUserProfile(state.user.id);
                 await fetchFacilities();
-            } catch (e) { console.error("Failed to fetch initial data for user:", e); }
+            } catch (e) {
+                console.error("Failed to fetch initial data for user:", e);
+            }
             navigate('dashboard');
         } else {
             state.user = null;
@@ -125,10 +181,9 @@ async function initAuth() {
     });
 }
 
-
 /* ===========================
     Router and views (SPA Core)
-    =========================== */
+   =========================== */
 
 export function navigate(view) {
     state.view = view;
@@ -147,22 +202,21 @@ async function renderRoute() {
         return;
     }
 
-    // Handle authenticated routes
     switch (state.view) {
-      case 'dashboard': await renderDashboard(); break;
-      case 'cases': await renderCases(); break;
-      case 'reports': await renderReports(); break;
-      case 'users': await renderUserManagement(); break;
-      case 'login': 
-      case 'signup': 
-      default: 
-        navigate('dashboard');
+        case 'dashboard': await renderDashboard(); break;
+        case 'cases': await renderCases(); break;
+        case 'reports': await renderReports(); break;
+        case 'users': await renderUserManagement(); break;
+        case 'login':
+        case 'signup':
+        default:
+            navigate('dashboard');
     }
 }
 
 /* ===========================
     Core Shell Layout (Sidebar)
-    =========================== */
+   =========================== */
 
 export function renderMain(html) {
     const showSidebar = !!state.user;
@@ -179,21 +233,21 @@ export function renderMain(html) {
         </main>
       </div>
     `;
-      
+
     if (showSidebar) {
-      attachShellListeners();
+        attachShellListeners();
     }
 }
 
 function renderSidebar() {
     const userEmail = state.user?.email || '';
-    const userLevel = state.data.profile?.user_level || 'Data Entry'; 
-    
+    const userLevel = state.data.profile?.user_level || 'Data Entry';
+
     const tabs = [
         { key: 'dashboard', label: 'Dashboard' },
         { key: 'cases', label: 'Case List' },
         { key: 'reports', label: 'Reports' },
-        { key: 'users', label: 'User Management', restricted: true } 
+        { key: 'users', label: 'User Management', restricted: true }
     ];
 
     const navItems = tabs
@@ -217,25 +271,25 @@ function renderSidebar() {
           <button id="logoutBtn" class="logout-btn">
             Logout
           </button>
-          </div>
         </div>
+      </div>
     `;
 }
 
 function attachShellListeners() {
     $$('[data-nav]').forEach(b => b.onclick = () => {
-      const nav = b.getAttribute('data-nav');
-      navigate(nav);
+        const nav = b.getAttribute('data-nav');
+        navigate(nav);
     });
     $('#logoutBtn').onclick = async () => {
-      await signOut(); 
+        await signOut();
     };
 }
 
-
 /* ===========================
     Login View 
-    =========================== */
+   =========================== */
+
 export const renderLogin = (errorMessage = '') => {
     renderMain(`
         <div class="h-full flex items-center justify-center bg-gray-100">
@@ -275,18 +329,37 @@ export const renderLogin = (errorMessage = '') => {
 };
 
 /* ===========================
-    Dashboard View (Logic omitted for brevity, assume full code here)
-    =========================== */
+    Signup View Placeholder
+   =========================== */
+
+export function renderSignUp() {
+    renderMain(`
+        <div class="h-full flex items-center justify-center bg-gray-100">
+            <div class="bg-white p-6 rounded-xl shadow-md w-full max-w-md signup-card">
+                <h1 class="text-2xl font-bold text-center mb-4">Sign Up (TBA)</h1>
+                <p class="text-center">Signup flow will be implemented here.</p>
+                <p class="text-center mt-6">
+                    <button id="backToLogin" class="text-blue-600 hover:underline link-btn">Back to Login</button>
+                </p>
+            </div>
+        </div>
+    `);
+
+    $('#backToLogin').onclick = () => navigate('login');
+}
+
+/* ===========================
+    Dashboard View 
+   =========================== */
 
 async function renderDashboard() {
-    const userProfile = state.data.profile; 
+    const userProfile = state.data.profile;
     const metrics = await fetchDashboardMetrics();
-    // ... calculate KPIs ...
+
     const reviewRate = metrics.totalCases > 0 ? ((metrics.reviewedCases / metrics.totalCases) * 100).toFixed(1) : 0;
     const implementationRate = metrics.totalRecommendations > 0 ? ((metrics.closedRecommendations / metrics.totalRecommendations) * 100).toFixed(1) : 0;
     const iMMR = metrics.mockLiveBirths > 0 ? ((metrics.maternalDeaths / metrics.mockLiveBirths) * 100000).toFixed(0) : 'N/A';
-    
-    // ... render HTML for Dashboard ... (using logic from previous detailed response)
+
     renderMain(`
       <div class="content-page">
         <div class="page-header">
@@ -298,27 +371,40 @@ async function renderDashboard() {
           <p class="detail-item"><strong>Facility:</strong> ${escapeHtml(userProfile?.facilities?.facility_name || 'County/Subcounty')}</p>
         </div>
         <h2 class="section-title">Key MPDSR Performance Indicators</h2>
-        <div class="facility-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-            <div class="card">... Maternal Deaths ...</div>
-            <div class="card">... iMMR ...</div>
-            <div class="card">... Review Rate ${reviewRate}% ...</div>
-            <div class="card">... Implementation Rate ${implementationRate}% ...</div>
+        <div class="facility-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div class="card">
+              <h3>Maternal Deaths</h3>
+              <p class="large-number">${metrics.maternalDeaths}</p>
+            </div>
+            <div class="card">
+              <h3>iMMR (per 100,000 live births)</h3>
+              <p class="large-number">${iMMR}</p>
+            </div>
+            <div class="card">
+              <h3>Review Rate (%)</h3>
+              <p class="large-number">${reviewRate}</p>
+            </div>
+            <div class="card">
+              <h3>Implementation Rate (%)</h3>
+              <p class="large-number">${implementationRate}</p>
+            </div>
         </div>
         <h2 class="section-title">Active Facilities</h2>
-        <div class="facility-grid">
+        <div class="facility-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
           ${state.data.facilities.map(f => `<div class="card facility-card">${escapeHtml(f.facility_name)}</div>`).join('')}
         </div>
       </div>
     `);
 }
 
-
 /* ===========================
-    Cases View and Filtering (Logic omitted for brevity, assume full code here)
-    =========================== */
+    Cases View
+   =========================== */
+
 async function renderCases() {
     await fetchCases();
-    const filtered = (state.data.cases || []).filter(c => true); // Simplistic filter for display
+    const filtered = (state.data.cases || []).filter(c => true); // simple filter placeholder
+
     renderMain(`
       <div class="content-page">
         <div class="page-header flex-spaced">
@@ -334,7 +420,7 @@ async function renderCases() {
               ${filtered.map(c => `
                 <tr>
                   <td>${escapeHtml(c.case_id)}</td>
-                  <td>${escapeHtml(c.case_summary?.slice(0,40) || 'N/A')}</td>
+                  <td>${escapeHtml((c.case_summary || '').slice(0, 40))}</td>
                   <td><span class="status-badge ${statusClasses(c.status || 'Data Entry')}">${escapeHtml(c.status || 'Data Entry')}</span></td>
                   <td class="action-cell"><button data-case="${escapeHtml(c.case_id)}" class="view-case-btn link-btn">View</button></td>
                 </tr>
@@ -347,90 +433,73 @@ async function renderCases() {
 
     $('#newCaseBtn').onclick = () => showNewCaseModal();
     $$('.view-case-btn').forEach(b => b.onclick = async () => {
-      const caseId = b.getAttribute('data-case');
-      await showCaseDetails(caseId);
+        const caseId = b.getAttribute('data-case');
+        await showCaseDetails(caseId);
     });
 }
 
 /* ===========================
-    Reports View (Functional Placeholder)
-    =========================== */
+    Reports View (Placeholder)
+   =========================== */
+
 async function renderReports() {
     renderMain(`
       <div class="content-page">
         <h1 class="page-title mb-6">Reports & Analytics</h1>
-        <div class="card report-info-card">
-          <h3 class="card-title">MPDSR Reporting Summary</h3>
-          <p class="text-lg text-gray-600 mt-2">This section is for data analysis and trend reporting.</p>
-          <div class="mt-4">
-            <button class="secondary-btn">Download Weekly PDF</button>
-          </div>
-        </div>
+        <p>Reports feature coming soon.</p>
       </div>
     `);
 }
 
 /* ===========================
-    User Management View (Admin Only)
-    =========================== */
-async function renderUserManagement() {
-  if (state.data.profile?.user_level !== 'County Admin') {
-      renderMain('<div class="content-page"><h1 class="page-title">Access Denied</h1><p>You do not have permission to view this page.</p></div>');
-      return;
-  }
-  await fetchAllUsers();
+    User Management View
+   =========================== */
 
-  const userListHtml = (state.data.users || []).map(u => `
-    <tr>
-      <td class="table-cell font-medium">${escapeHtml(u.full_name || 'N/A')}</td>
-      <td class="table-cell">${escapeHtml(u.email)}</td>
-      <td class="table-cell">${escapeHtml(u.user_level)}</td>
-      <td class="table-cell">${escapeHtml(u.facilities?.facility_name || 'County')}</td>
-    </tr>
-  `).join('');
-  
-  renderMain(`
-    <div class="content-page">
-      <div class="page-header flex-spaced">
-        <h1 class="page-title">User Management</h1>
-        <button id="newUserBtn" class="primary-btn">Add User (TBA)</button>
-      </div>
-      <div class="card table-container">
-        <table class="data-table">
+async function renderUserManagement() {
+    await fetchAllUsers();
+
+    renderMain(`
+      <div class="content-page">
+        <h1 class="page-title mb-6">User Management</h1>
+        <table class="data-table full-width">
           <thead>
-            <tr><th>Name</th><th>Email</th><th>Role</th><th>Facility</th></tr>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Facility</th>
+            </tr>
           </thead>
           <tbody>
-            ${userListHtml}
+            ${state.data.users.map(u => `
+              <tr>
+                <td>${escapeHtml(u.full_name)}</td>
+                <td>${escapeHtml(u.email)}</td>
+                <td>${escapeHtml(u.user_level)}</td>
+                <td>${escapeHtml(u.facilities?.facility_name || '')}</td>
+              </tr>
+            `).join('')}
           </tbody>
         </table>
       </div>
-    </div>
-  `);
+    `);
 }
 
 /* ===========================
-    Modal and Form Logic (showCaseDetails, showNewCaseModal, etc.)
-    
-    NOTE: These are too long to include fully here, but they should be placed
-    immediately after the render functions, using the detailed code from
-    the previous comprehensive script.
-    
-    For now, assume only the core detail function is present:
-    =========================== */
+    Modal / Case Details (Basic placeholders)
+   =========================== */
+
+function showNewCaseModal() {
+    alert("New Case modal placeholder - implement your form here.");
+}
 
 async function showCaseDetails(caseId) {
-    const { data: caseData } = await supabase.from('mpdsr_cases').select('*').eq('case_id', caseId).single();
-    if (!caseData) return;
-    alert(`Showing details for Case ID: ${caseData.case_id}\nSummary: ${caseData.case_summary}`);
-    // Replace alert with the full modal rendering logic
+    alert(`Case Details modal placeholder for Case ID: ${caseId}`);
 }
-function showNewCaseModal() {
-    alert("Showing New Case Form (Full modal logic needed here)");
-    // Replace alert with the full modal rendering logic
-}
-// ... showEditCaseForm, showAddReviewForm, etc. ...
 
+/* ===========================
+    Kickoff Application
+   =========================== */
 
-// Kick off the application initialization
 initAuth();
+
