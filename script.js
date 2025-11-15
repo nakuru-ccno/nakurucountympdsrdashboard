@@ -1,14 +1,13 @@
-
 import { supabase } from "./supabase.js";
-import { renderSignUp } from "./signup.js"; // ⭐ NEW: Import the signup view
+import { renderSignUp } from "./signup.js"; // Import the signup view
 
 /* ===========================
    Utility helpers
    =========================== */
 const root = document.getElementById("root");
-export const $ = (sel, ctx = document) => ctx.querySelector(sel); // ⭐ EXPORTED
-export const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel)); // ⭐ EXPORTED
-export const escapeHtml = (s) => (s === null || s === undefined) ? "" : String(s) // ⭐ EXPORTED
+export const $ = (sel, ctx = document) => ctx.querySelector(sel);
+export const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel));
+export const escapeHtml = (s) => (s === null || s === undefined) ? "" : String(s)
   .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
   .replace(/"/g,"&quot;").replace(/'/g,"&#039;");
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString() : "";
@@ -18,7 +17,7 @@ const noop = () => {};
 /* ===========================
    App state
    =========================== */
-export const state = { // ⭐ EXPORTED
+export const state = {
   user: null,
   view: 'login', // login | dashboard | cases | reports | users | signup
   filters: { q: '', subcounty: 'All', status: 'All' },
@@ -45,10 +44,10 @@ export async function signOut() {
   await supabase.auth.signOut();
   state.user = null;
 }
-// Note: signUpNewUser is now in signup.js
+// Note: signUpNewUser is in signup.js
 
 // Facilities
-export async function fetchFacilities() { // ⭐ EXPORTED (needed by signup.js)
+export async function fetchFacilities() {
   const { data, error } = await supabase.from('facilities').select('*').eq('is_active', true).order('facility_name');
   if (error) throw error;
   state.data.facilities = data || [];
@@ -74,7 +73,6 @@ export async function updateUser(user_id, payload) {
 
 // Cases
 export async function fetchCases() {
-  // Apply no filter server-side by default; front-end will filter locally or call with params if desired.
   const { data, error } = await supabase.from('mpdsr_cases').select('*').order('death_date', { ascending: false });
   if (error) throw error;
   state.data.cases = data || [];
@@ -164,13 +162,13 @@ async function initAuth() {
    Router and views
    =========================== */
 
-export function navigate(view) { // ⭐ EXPORTED (needed by signup.js)
+export function navigate(view) {
   state.view = view;
   renderRoute();
 }
 
 async function renderRoute() {
-  // ⭐ UPDATED to allow 'signup' view without authentication
+  // Enforce authentication for all main views
   if (!state.user && state.view !== 'login' && state.view !== 'signup') { 
     renderLogin();
     return;
@@ -178,7 +176,7 @@ async function renderRoute() {
 
   switch (state.view) {
     case 'login': renderLogin(); break;
-    case 'signup': renderSignUp(); break; // ⭐ NEW ROUTE
+    case 'signup': renderSignUp(); break;
     case 'dashboard': await renderDashboard(); break;
     case 'cases': await renderCases(); break;
     case 'reports': await renderReports(); break;
@@ -235,7 +233,7 @@ const renderLogin = (errorMessage = '') => { // FIX APPLIED: Changed 'function' 
     }
   };
     
-  // ⭐ NEW LISTENER
+  // NEW LISTENER
   $('#goToSignUp').onclick = () => {
     navigate('signup');
   };
@@ -245,29 +243,37 @@ const renderLogin = (errorMessage = '') => { // FIX APPLIED: Changed 'function' 
    Dashboard View
    =========================== */
 
-export function renderMain(html) { // ⭐ EXPORTED (needed by signup.js)
+export function renderMain(html) { // 🌟 FIX APPLIED HERE 🌟
   // shared layout: sidebar + main panel (sidebar used across pages)
-  const sidebar = renderSidebar();
+  const showSidebar = !!state.user; // true if state.user is an object, false otherwise
+  const sidebar = showSidebar ? renderSidebar() : '';
+
+  // Adjust the main container class based on visibility
+  const containerClass = showSidebar ? 'flex h-screen overflow-hidden' : 'h-screen overflow-hidden';
+  const mainClass = showSidebar ? 'flex-grow overflow-y-auto transition-all duration-300 bg-gray-50' : 'flex-grow overflow-y-auto w-full bg-gray-50'; // w-full ensures full width when no sidebar
+
   root.innerHTML = `
-    <div class="flex h-screen overflow-hidden">
-      ${sidebar}
-      <main class="flex-grow overflow-y-auto transition-all duration-300 bg-gray-50">
+    <div class="${containerClass}">
+      ${sidebar} 
+      <main class="${mainClass}">
         ${html}
       </main>
     </div>
   `;
-  attachShellListeners();
+    
+  // Only attach listeners if the sidebar was rendered
+  if (showSidebar) {
+    attachShellListeners();
+  }
 }
 
 function renderSidebar() {
-  const collapsed = false;
   const userEmail = state.user?.email || '';
   const navItem = (key, label) => `<button data-nav="${key}" class="flex items-center w-full p-3 my-1 rounded-lg text-indigo-200 hover:bg-indigo-700 ${state.view===key ? 'bg-indigo-600 text-white shadow-lg' : ''}">${label}</button>`;
   return `
     <div class="h-full bg-indigo-800 text-white shadow-xl w-64 flex flex-col flex-shrink-0">
       <div class="flex items-center justify-between p-4 border-b border-indigo-700">
         <h1 class="text-xl font-bold">MPDSR Nakuru</h1>
-        ${/* Note: collapsed button removed to simplify */ ''}
       </div>
       <nav class="flex-grow p-3 space-y-1 overflow-y-auto">
         ${navItem('dashboard', 'Dashboard')}
@@ -632,6 +638,7 @@ function showEditCaseForm(caseData) {
             <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded">Update</button>
           </div>
         </form>
+      </div>
       </div>
     </div>
   `;
