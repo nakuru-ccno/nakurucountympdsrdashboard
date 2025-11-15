@@ -1,5 +1,8 @@
 // script.js (Complete SPA with Supabase Auth)
 
+// Import Supabase Client
+import { supabase } from "./supabase.js";
+
 // Import renderSignUp for seamless routing
 import { renderSignUp } from "/nakurucountympdsrdashboard/signup.js";
 
