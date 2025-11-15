@@ -1,4 +1,5 @@
 import { supabase } from "./supabase.js";
+import { renderSignUp } from "./signup.js"; // ⭐ ADD THIS LINE
 
 /* ===========================
    Utility helpers
