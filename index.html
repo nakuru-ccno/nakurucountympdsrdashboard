@@ -36,17 +36,26 @@
 
 <body class="font-sans bg-gray-100 h-full">
 
-    <div id="root" class="h-full w-full"></div>
+    <div id="root" class="h-full w-full">
+        <div class="login-page">
+            <div class="login-card" style="text-align: center;">
+                <p class="login-title" style="color: var(--color-primary);">Initializing MPDSR...</p>
+            </div>
+        </div>
+    </div>
 
     <script type="module">
         import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+        // !! IMPORTANT !!
+        // Replace these placeholder values with your actual Supabase URL and Anon Key.
         window.supabase = createClient(
             "https://YOUR-SUPABASE-PROJECT-ID.supabase.co",
             "YOUR-SUPABASE-ANON-KEY"
         );
     </script>
 
+    <script type="module" src="/nakurucountympdsrdashboard/signup.js"></script>
     <script type="module" src="/nakurucountympdsrdashboard/script.js"></script> 
 
 </body>
