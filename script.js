@@ -328,25 +328,6 @@ export const renderLogin = (errorMessage = '') => {
     };
 };
 
-/* ===========================
-    Signup View Placeholder
-   =========================== */
-
-export function renderSignUp() {
-    renderMain(`
-        <div class="h-full flex items-center justify-center bg-gray-100">
-            <div class="bg-white p-6 rounded-xl shadow-md w-full max-w-md signup-card">
-                <h1 class="text-2xl font-bold text-center mb-4">Sign Up (TBA)</h1>
-                <p class="text-center">Signup flow will be implemented here.</p>
-                <p class="text-center mt-6">
-                    <button id="backToLogin" class="text-blue-600 hover:underline link-btn">Back to Login</button>
-                </p>
-            </div>
-        </div>
-    `);
-
-    $('#backToLogin').onclick = () => navigate('login');
-}
 
 /* ===========================
     Dashboard View 
