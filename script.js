@@ -1,13 +1,14 @@
+
 import { supabase } from "./supabase.js";
-import { renderSignUp } from "./signup.js"; // ⭐ ADD THIS LINE
+import { renderSignUp } from "./signup.js"; // ⭐ NEW: Import the signup view
 
 /* ===========================
    Utility helpers
    =========================== */
 const root = document.getElementById("root");
-const $ = (sel, ctx = document) => ctx.querySelector(sel);
-const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel));
-const escapeHtml = (s) => (s === null || s === undefined) ? "" : String(s)
+export const $ = (sel, ctx = document) => ctx.querySelector(sel); // ⭐ EXPORTED
+export const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel)); // ⭐ EXPORTED
+export const escapeHtml = (s) => (s === null || s === undefined) ? "" : String(s) // ⭐ EXPORTED
   .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
   .replace(/"/g,"&quot;").replace(/'/g,"&#039;");
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString() : "";
@@ -17,9 +18,9 @@ const noop = () => {};
 /* ===========================
    App state
    =========================== */
-const state = {
+export const state = { // ⭐ EXPORTED
   user: null,
-  view: 'login', // login | dashboard | cases | reports | users
+  view: 'login', // login | dashboard | cases | reports | users | signup
   filters: { q: '', subcounty: 'All', status: 'All' },
   data: {
     facilities: [],
@@ -44,9 +45,10 @@ export async function signOut() {
   await supabase.auth.signOut();
   state.user = null;
 }
+// Note: signUpNewUser is now in signup.js
 
 // Facilities
-export async function fetchFacilities() {
+export async function fetchFacilities() { // ⭐ EXPORTED (needed by signup.js)
   const { data, error } = await supabase.from('facilities').select('*').eq('is_active', true).order('facility_name');
   if (error) throw error;
   state.data.facilities = data || [];
@@ -162,19 +164,21 @@ async function initAuth() {
    Router and views
    =========================== */
 
-function navigate(view) {
+export function navigate(view) { // ⭐ EXPORTED (needed by signup.js)
   state.view = view;
   renderRoute();
 }
 
 async function renderRoute() {
-  if (!state.user && state.view !== 'login') {
+  // ⭐ UPDATED to allow 'signup' view without authentication
+  if (!state.user && state.view !== 'login' && state.view !== 'signup') { 
     renderLogin();
     return;
   }
 
   switch (state.view) {
     case 'login': renderLogin(); break;
+    case 'signup': renderSignUp(); break; // ⭐ NEW ROUTE
     case 'dashboard': await renderDashboard(); break;
     case 'cases': await renderCases(); break;
     case 'reports': await renderReports(); break;
@@ -184,9 +188,9 @@ async function renderRoute() {
 }
 
 /* ===========================
-   Login View (FIXED to use const)
+   Login View
    =========================== */
-const renderLogin = (errorMessage = '') => { // ⬅️ FIX APPLIED: Changed 'function' to 'const'
+const renderLogin = (errorMessage = '') => { // FIX APPLIED: Changed 'function' to 'const'
   renderMain(`
     <div class="h-full flex items-center justify-center bg-gray-100">
       <div class="bg-white p-6 rounded-xl shadow-md w-full max-w-md">
@@ -202,7 +206,12 @@ const renderLogin = (errorMessage = '') => { // ⬅️ FIX APPLIED: Changed 'fun
           class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700">Login</button>
 
         <p id="error" class="text-red-500 text-center mt-3">${escapeHtml(errorMessage)}</p>
-      </div>
+        
+        <p class="text-center text-sm mt-4">
+            Don't have an account? 
+            <button id="goToSignUp" class="text-blue-600 hover:underline font-medium">Create Account</button>
+        </p>
+              </div>
     </div>
   `);
 
@@ -225,13 +234,18 @@ const renderLogin = (errorMessage = '') => { // ⬅️ FIX APPLIED: Changed 'fun
       renderLogin(err.message || String(err));
     }
   };
+    
+  // ⭐ NEW LISTENER
+  $('#goToSignUp').onclick = () => {
+    navigate('signup');
+  };
 }
 
 /* ===========================
    Dashboard View
    =========================== */
 
-function renderMain(html) {
+export function renderMain(html) { // ⭐ EXPORTED (needed by signup.js)
   // shared layout: sidebar + main panel (sidebar used across pages)
   const sidebar = renderSidebar();
   root.innerHTML = `
@@ -505,7 +519,7 @@ async function showCaseDetails(caseId) {
     showAddReviewForm(caseData.case_id);
   };
 
-  $$('.view-review-btn', overlay).forEach(btn => btn.onclick = async () => {
+  $$('.view-review-btn').forEach(btn => btn.onclick = async () => {
     const reviewId = btn.getAttribute('data-review');
     await showReviewDetails(reviewId);
     overlay.remove();
@@ -532,7 +546,7 @@ function showNewCaseModal() {
             <select name="reporting_facility_id" required class="w-full p-3 border rounded">
               ${facilityOptions}
             </select>
-          </div>
+            </div>
           <div>
             <label class="block text-sm font-medium text-gray-700">Case Type</label>
             <select name="case_type" required class="w-full p-3 border rounded">
@@ -592,7 +606,7 @@ function showEditCaseForm(caseData) {
         <div class="p-6 border-b flex justify-between items-center">
           <h2 class="text-2xl font-bold">Edit Case ${escapeHtml(caseData.case_id)}</h2>
           <button id="closeEdit" class="text-gray-500">✕</button>
-        </div>
+          </div>
         <form id="editCaseForm" class="p-6 space-y-4">
           <div>
             <label class="block text-sm">Reporting Facility</label>
@@ -759,7 +773,7 @@ async function showReviewDetails(reviewId) {
 }
 
 /* ===========================
-   Recommendations (COMPLETED)
+   Recommendations
    =========================== */
 
 function showAddRecommendationForm(reviewId) {
