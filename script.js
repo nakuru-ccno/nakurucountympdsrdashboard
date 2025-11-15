@@ -1,10 +1,5 @@
-// NOTE: Assuming window.supabase is created in index.html.
-// If you are relying on a local supabase.js, ensure it exports the client.
-// We will use the standard window object reference for maximum compatibility
-// with the setup in your HTML file.
-
-// import { supabase } from "./supabase.js"; // COMMENTED OUT: Use window.supabase instead
-// import { renderSignUp } from "./signup.js"; // Placeholder, assuming this exists
+// NOTE: Assuming window.supabase is created in index.html, 
+// and the 'Inter' font and style.css are correctly linked.
 
 /* ===========================
     Utility helpers
@@ -16,23 +11,23 @@ export const escapeHtml = (s) => (s === null || s === undefined) ? "" : String(s
   .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
   .replace(/"/g,"&quot;").replace(/'/g,"&#039;");
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString() : "";
-// Status classes are now standard CSS classes defined in style.css
+// Helper for status badge CSS classes
 const statusClasses = s => s === 'Pending Review' ? 'status-pending' : (s==='Audit Complete' ? 'status-complete' : (s==='Data Entry' ? 'status-entry' : (s==='Closed' ? 'closed' : 'status-default')));
-const noop = () => {};
 
 /* ===========================
     App state
     =========================== */
 export const state = {
-    user: null,
-    view: 'login', // login | dashboard | cases | reports | users | signup
+    // 1. BYPASS AUTH: Set mock user and start on dashboard for development
+    user: { id: 'dev-user-id', email: 'dev@nakuru.go.ke' }, 
+    view: 'dashboard', 
     filters: { q: '', subcounty: 'All', status: 'All' },
     data: {
       facilities: [],
       cases: [],
       reviews: {},
       recommendations: {},
-      users: [], // Added for user management
+      users: [],
     },
     modal: { visible: false, mode: 'new', payload: null }
 };
@@ -40,16 +35,15 @@ export const state = {
 /* ===========================
     Supabase API wrappers (using window.supabase)
     =========================== */
-const supabase = window.supabase; // Reference the global Supabase client
+const supabase = window.supabase; 
 
-export async function signIn(email, password) {
-    const resp = await supabase.auth.signInWithPassword({ email, password });
-    if (resp.error) throw resp.error;
-    return resp.data;
-}
-export async function signOut() {
-    await supabase.auth.signOut();
+// --- Functions that will mostly be used internally, kept for structure ---
+export async function signIn(email, password) { /* Bypassed */ }
+export async function signOut() { 
+    // This allows the Logout button to function for the mock user
+    console.log("Mock user signed out.");
     state.user = null;
+    renderMain('<div class="login-page"><p>Logged out. Refresh to restart development session.</p></div>');
 }
 
 // --- Facilities ---
@@ -62,9 +56,15 @@ export async function fetchFacilities() {
 
 // --- Users ---
 export async function fetchUserProfile(user_id) {
+    // Return mock data for the dev user if the database call fails
     const { data, error } = await supabase.from('mpdsr_users').select('*, facilities(facility_name)').eq('user_id', user_id).single();
-    if (error && error.code !== 'PGRST116') { console.error(error); }
-    return data || null;
+    if (error && error.code !== 'PGRST116') { console.error("Error fetching profile:", error); }
+    
+    return data || { 
+        full_name: 'Dev User', 
+        user_level: 'County Admin',
+        facilities: { facility_name: 'Nakuru County' }
+    };
 }
 export async function fetchAllUsers() {
     const { data, error } = await supabase.from('mpdsr_users').select('*, facilities(facility_name)').order('full_name');
@@ -144,7 +144,7 @@ export async function updateRecommendation(recommendation_id, payload) {
     return data;
 }
 
-// --- Dashboard Metrics (NEW) ---
+// --- Dashboard Metrics ---
 export async function fetchDashboardMetrics() {
     // 1. Total Case Counts
     const { count: maternalCount, error: err1 } = await supabase
@@ -195,21 +195,21 @@ export async function fetchDashboardMetrics() {
 }
 
 /* ===========================
-    Authentication handling + init
+    Authentication handling + init (DISABLED)
     =========================== */
 
 async function initAuth() {
-    const { data } = await supabase.auth.getSession();
-    if (data?.session?.user) {
-      state.user = data.session.user;
-    } else {
-      state.user = null;
+    // BYPASS: Simulate a successful session load for development
+    console.warn("Authentication Bypassed for Development.");
+    
+    // Ensure core data is fetched before rendering the dashboard
+    try {
+        await fetchFacilities();
+    } catch (e) {
+        console.error("Failed to fetch initial facilities:", e);
     }
-
-    supabase.auth.onAuthStateChange((_event, session) => {
-      state.user = session?.user || null;
-      renderRoute();
-    });
+    // Skip calling supabase.auth.onAuthStateChange
+    renderRoute();
 }
 
 /* ===========================
@@ -222,15 +222,9 @@ export function navigate(view) {
 }
 
 async function renderRoute() {
-    // Enforce authentication for all main views
-    if (!state.user && state.view !== 'login' && state.view !== 'signup') { 
-      renderLogin();
-      return;
-    }
-
+    // No authentication check needed due to bypass
+    
     switch (state.view) {
-      case 'login': renderLogin(); break;
-      // case 'signup': renderSignUp(); break; // Assuming signup logic is in signup.js
       case 'dashboard': await renderDashboard(); break;
       case 'cases': await renderCases(); break;
       case 'reports': await renderReports(); break;
@@ -298,79 +292,25 @@ function attachShellListeners() {
       navigate(nav);
     });
     $('#logoutBtn').onclick = async () => {
-      await supabase.auth.signOut();
-      state.user = null;
-      navigate('login');
+      // Calls the mock signOut function
+      await signOut(); 
+      // After sign out, the screen will show the logged out message from signOut()
     };
 }
 
 
 /* ===========================
-    Login View (REUSED)
+    Login View (REMOVED/IGNORED due to bypass)
     =========================== */
-const renderLogin = (errorMessage = '') => { 
-    renderMain(`
-      <div class="login-page">
-        <div class="login-card">
-          <h1 class="login-title">Welcome Back</h1>
-          <p class="login-subtitle">Sign in to access the MPDSR dashboard.</p>
-
-          <div class="form-group">
-            <input id="email" type="email" placeholder="Email Address"
-              class="form-input" />
-          </div>
-
-          <div class="form-group">
-            <input id="password" type="password" placeholder="Password (min 6 characters)"
-              class="form-input" />
-          </div>
-
-          <button id="loginBtn" class="primary-btn full-width">Login</button>
-
-          <p id="error" class="error-message">${escapeHtml(errorMessage)}</p>
-          
-          <p class="signup-link-text">
-              Don't have an account? 
-              <button id="goToSignUp" class="link-btn">Create Account</button>
-          </p>
-        </div>
-      </div>
-    `);
-
-    $('#loginBtn').onclick = async () => {
-      const email = $('#email').value.trim();
-      const password = $('#password').value.trim();
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) { renderLogin(error.message); return; }
-
-        try {
-          await supabase.from('mpdsr_users').update({ last_login: new Date().toISOString() }).eq('user_id', data.user.id);
-        } catch(e){ /* ignore */ }
-
-        state.user = data.user;
-        await fetchFacilities();
-        navigate('dashboard');
-      } catch (err) {
-        renderLogin(err.message || String(err));
-      }
-    };
-      
-    $('#goToSignUp').onclick = () => {
-      // Assuming you have a renderSignUp() function exported from signup.js or implemented here
-      // navigate('signup');
-      alert('Signup function not yet implemented or imported. Please contact admin.');
-    };
-}
+// The renderLogin function is not needed as the app routes directly to the dashboard.
+// You can remove or comment out any previously existing renderLogin function.
 
 
 /* ===========================
-    Dashboard View (UPDATED WITH METRICS)
+    Dashboard View
     =========================== */
 
 async function renderDashboard() {
-    // 1. Fetch data
-    if (!state.data.facilities.length) await fetchFacilities();
     const userProfile = await fetchUserProfile(state.user.id);
     const metrics = await fetchDashboardMetrics();
 
@@ -442,11 +382,10 @@ async function renderDashboard() {
 
 
 /* ===========================
-    Cases View (REUSED)
+    Cases View
     =========================== */
 
 async function renderCases() {
-    await fetchFacilities();
     await fetchCases();
 
     const filtered = applyFilters(state.data.cases, state.filters);
@@ -477,7 +416,7 @@ async function renderCases() {
           <table class="data-table">
             <thead>
               <tr>
-                ${['Case ID','Facility','Sub-County','Type','Date','Status','Actions'].map(h => `<th class="table-header">${h}</th>`).join('')}
+                ${['Case ID','Summary/Facility','Sub-County','Type','Date','Status','Actions'].map(h => `<th class="table-header">${h}</th>`).join('')}
               </tr>
             </thead>
             <tbody>
@@ -499,9 +438,9 @@ async function renderCases() {
     `);
 
     // attach listeners
-    $('#q').oninput = (e) => { state.filters.q = e.target.value; renderCases(); };
-    $('#subcountyFilter').onchange = (e) => { state.filters.subcounty = e.target.value; renderCases(); };
-    $('#statusFilter').onchange = (e) => { state.filters.status = e.target.value; renderCases(); };
+    $('#q').oninput = () => { state.filters.q = $('#q').value; renderCases(); };
+    $('#subcountyFilter').onchange = () => { state.filters.subcounty = $('#subcountyFilter').value; renderCases(); };
+    $('#statusFilter').onchange = () => { state.filters.status = $('#statusFilter').value; renderCases(); };
     $('#newCaseBtn').onclick = () => showNewCaseModal();
     $('#printBtn').onclick = () => window.print();
 
@@ -513,6 +452,8 @@ async function renderCases() {
 }
 
 function applyFilters(list, filters) {
+    // Note: The reporting_subcounty is assumed to be part of the case data 
+    // or resolved from the reporting_facility_id in the database query.
     return (list || []).filter(c => {
       if (filters.subcounty && filters.subcounty !== 'All' && (c.reporting_subcounty || '') !== filters.subcounty) return false;
       if (filters.status && filters.status !== 'All' && (c.status || '') !== filters.status) return false;
@@ -526,7 +467,7 @@ function applyFilters(list, filters) {
 
 
 /* ===========================
-    Case Modal: view details + reviews + recommendations (REUSED)
+    Case Modal: view details + reviews + recommendations
     =========================== */
 
 async function showCaseDetails(caseId) {
@@ -535,7 +476,7 @@ async function showCaseDetails(caseId) {
     await fetchReviews(caseId);
     const reviews = state.data.reviews[caseId] || [];
 
-    // modal HTML
+    // modal HTML setup (Truncated for brevity, assuming the full HTML structure)
     const modalHtml = `
       <div class="modal-overlay">
         <div class="modal-content large-modal">
@@ -581,7 +522,7 @@ async function showCaseDetails(caseId) {
                 <div class="review-item">
                   <div class="review-header flex-spaced"><div class="review-date">${fmtDate(r.review_date)}</div></div>
                   <div class="review-outcome text-sm mt-2">${escapeHtml(r.review_outcome || r.root_cause_identified || '')}</div>
-                  <div class="reviewer-info text-xs mt-2">Reviewer: ${escapeHtml(r.reviewer_user_id || '')}</div>
+                  <div class="reviewer-info text-xs mt-2">Reviewer ID: ${escapeHtml(r.reviewer_user_id || 'N/A')}</div>
                   <div class="mt-2"><button data-review="${r.review_id}" class="view-review-btn secondary-btn small-btn">View / Recommendations</button></div>
                 </div>
               `).join('')}
@@ -606,13 +547,13 @@ async function showCaseDetails(caseId) {
       showEditCaseForm(caseData);
     };
     $('#delCaseBtn', overlay).onclick = async () => {
-      if (!confirm('Delete this case?')) return;
+      if (!confirm('Are you sure you want to permanently delete this case?')) return;
       try {
         await deleteCase(caseId);
         overlay.remove();
         await fetchCases();
         renderCases();
-        alert('Deleted');
+        alert('Case deleted successfully.');
       } catch (e) {
         alert('Delete failed: ' + e.message);
       }
@@ -624,17 +565,17 @@ async function showCaseDetails(caseId) {
 
     $$('.view-review-btn').forEach(btn => btn.onclick = async () => {
       const reviewId = btn.getAttribute('data-review');
-      await showReviewDetails(reviewId);
+      // Pass the case ID back to allow navigation back to case details if needed
+      await showReviewDetails(reviewId, caseData.case_id); 
       overlay.remove();
     });
 }
 
 /* ===========================
-    Add/Edit Case Forms (REUSED)
+    Add/Edit Case Forms 
     =========================== */
 
 function showNewCaseModal() {
-    // build modal with facilities list
     const facilityOptions = state.data.facilities.map(f => `<option value="${escapeHtml(f.facility_id)}">${escapeHtml(f.facility_name)}</option>`).join('');
     const html = `
       <div class="modal-overlay">
@@ -689,6 +630,7 @@ function showNewCaseModal() {
         death_date: fd.get('death_date'),
         case_summary: fd.get('case_summary'),
         is_reviewed: false,
+        status: 'Data Entry',
         created_at: new Date().toISOString()
       };
       try {
@@ -696,8 +638,8 @@ function showNewCaseModal() {
         wrap.remove();
         await fetchCases();
         renderCases();
-        alert('Case created');
-      } catch (e) { alert('Create failed: ' + e.message); }
+        alert('Case created successfully.');
+      } catch (e) { alert('Case creation failed: ' + e.message); }
     };
 }
 
@@ -759,7 +701,7 @@ function showEditCaseForm(caseData) {
         case_type: fd.get('case_type'),
         death_date: fd.get('death_date'),
         case_summary: fd.get('case_summary'),
-        status: fd.get('status'), // Added status update capability
+        status: fd.get('status'), 
         updated_at: new Date().toISOString()
       };
       try {
@@ -767,14 +709,14 @@ function showEditCaseForm(caseData) {
         wrap.remove();
         await fetchCases();
         renderCases();
-        alert('Case updated');
+        alert('Case updated successfully.');
       } catch (e) { alert('Update failed: ' + e.message); }
     };
 }
 
 
 /* ===========================
-    Review flows (REUSED)
+    Review flows 
     =========================== */
 
 function showAddReviewForm(caseId) {
@@ -826,17 +768,18 @@ function showAddReviewForm(caseId) {
       };
       try {
         await createReview(payload);
-        // Also update the case status to 'Audit Complete' or similar
+        // Update the case status
         await updateCase(caseId, { status: 'Audit Complete', is_reviewed: true }); 
         wrap.remove();
         await fetchReviews(caseId);
-        alert('Review saved');
-        await showCaseDetails(caseId);
+        alert('Review saved successfully.');
+        // Re-open case details to show the new review
+        await showCaseDetails(caseId); 
       } catch (e) { alert('Save review failed: ' + e.message); }
     };
 }
 
-async function showReviewDetails(reviewId) {
+async function showReviewDetails(reviewId, caseId) {
     const { data, error } = await supabase.from('mpdsr_reviews').select('*').eq('review_id', reviewId).single();
     if (error) { alert('Could not load review'); return; }
     await fetchRecommendations(reviewId);
@@ -846,18 +789,27 @@ async function showReviewDetails(reviewId) {
       <div class="modal-overlay">
         <div class="modal-content large-modal">
           <div class="modal-header flex-spaced">
-            <h2 class="modal-title">Review ${fmtDate(data.review_date)}</h2>
-            <button id="closeReviewModal" class="secondary-btn small-btn">Close</button>
+            <h2 class="modal-title">Review Details (${fmtDate(data.review_date)})</h2>
+            <div class="action-buttons-group">
+                <button id="closeReviewModal" class="secondary-btn small-btn">Close</button>
+                <button id="backToCaseBtn" data-case-id="${caseId}" class="secondary-btn small-btn">Back to Case</button>
+            </div>
           </div>
 
           <div class="modal-body review-details-section">
             <div class="detail-group">
-              <p class="detail-label">Root Cause:</p>
+              <p class="detail-label">Review Outcome Summary:</p>
+              <p class="detail-value text-sm">${escapeHtml(data.review_outcome || '')}</p>
+            </div>
+            <div class="detail-group mt-4">
+              <p class="detail-label">Root Cause Identified:</p>
               <p class="detail-value text-sm">${escapeHtml(data.root_cause_identified || '')}</p>
             </div>
 
+            <hr class="divider">
+
             <div class="mt-4">
-              <h3 class="section-title-small">Recommendations</h3>
+              <h3 class="section-title-small">Recommendations (${recs.length})</h3>
               <div id="recList" class="recommendations-list">
                 ${recs.map(r => `
                   <div class="rec-item">
@@ -865,7 +817,10 @@ async function showReviewDetails(reviewId) {
                       <div>${escapeHtml(r.recommendation_text)}</div>
                       <div class="rec-status status-badge ${statusClasses(r.status)}">${escapeHtml(r.status)}</div>
                     </div>
-                    <div class="rec-meta text-xs">Target: ${fmtDate(r.target_completion_date)} Responsible: ${escapeHtml(r.responsible_person_name || '')}</div>
+                    <div class="rec-meta text-xs">
+                        Target: ${fmtDate(r.target_completion_date)} | Responsible: ${escapeHtml(r.responsible_person_name || 'N/A')}
+                        <button data-rec-id="${r.recommendation_id}" class="update-rec-btn link-btn small-btn">Update Status</button>
+                    </div>
                   </div>
                 `).join('')}
               </div>
@@ -883,18 +838,27 @@ async function showReviewDetails(reviewId) {
     document.body.appendChild(wrap);
 
     $('#closeReviewModal', wrap).onclick = () => wrap.remove();
+    $('#backToCaseBtn', wrap).onclick = async () => {
+        wrap.remove();
+        await showCaseDetails(caseId);
+    };
     $('#addRecBtn', wrap).onclick = () => {
       wrap.remove();
-      showAddRecommendationForm(reviewId);
+      showAddRecommendationForm(reviewId, caseId);
     };
+    $$('.update-rec-btn', wrap).forEach(btn => btn.onclick = () => {
+        const recId = btn.getAttribute('data-rec-id');
+        showUpdateRecommendationStatus(recId, reviewId, caseId);
+        wrap.remove();
+    });
 }
 
 
 /* ===========================
-    Recommendations (REUSED)
+    Recommendations 
     =========================== */
 
-function showAddRecommendationForm(reviewId) {
+function showAddRecommendationForm(reviewId, caseId) {
     const html = `
       <div class="modal-overlay">
         <div class="modal-content medium-modal">
@@ -946,9 +910,70 @@ function showAddRecommendationForm(reviewId) {
         await createRecommendation(payload);
         wrap.remove();
         await fetchRecommendations(reviewId);
-        alert('Recommendation saved');
-        await showReviewDetails(reviewId);
+        alert('Recommendation saved.');
+        // Go back to the review details screen
+        await showReviewDetails(reviewId, caseId); 
       } catch (e) { alert('Save recommendation failed: ' + e.message); }
+    };
+}
+
+function showUpdateRecommendationStatus(recId, reviewId, caseId) {
+    // Find the current recommendation data
+    const recData = state.data.recommendations[reviewId].find(r => r.recommendation_id === recId);
+    if (!recData) return;
+
+    const html = `
+        <div class="modal-overlay">
+            <div class="modal-content medium-modal">
+                <div class="modal-header">
+                    <h2 class="modal-title">Update Recommendation Status</h2>
+                    <button id="closeStatusModal" class="close-btn">✕</button>
+                </div>
+                <form id="statusForm" class="modal-form">
+                    <div class="form-group">
+                        <label class="form-label">Recommendation</label>
+                        <p class="detail-value text-sm">${escapeHtml(recData.recommendation_text)}</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Current Status: <strong>${escapeHtml(recData.status)}</strong></label>
+                        <select name="status" class="form-select" required>
+                            <option value="Pending" ${recData.status === 'Pending' ? 'selected' : ''}>Pending</option>
+                            <option value="In Progress" ${recData.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                            <option value="Closed" ${recData.status === 'Closed' ? 'selected' : ''}>Closed (Implemented)</option>
+                            <option value="Overdue" ${recData.status === 'Overdue' ? 'selected' : ''}>Overdue</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" id="cancelStatus" class="secondary-btn">Cancel</button>
+                        <button type="submit" class="primary-btn">Save Status</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    `;
+
+    const wrap = document.createElement('div');
+    wrap.innerHTML = html;
+    document.body.appendChild(wrap);
+
+    $('#closeStatusModal', wrap).onclick = () => wrap.remove();
+    $('#cancelStatus', wrap).onclick = () => wrap.remove();
+
+    $('#statusForm', wrap).onsubmit = async (ev) => {
+        ev.preventDefault();
+        const fd = new FormData(ev.target);
+        const newStatus = fd.get('status');
+        
+        try {
+            await updateRecommendation(recId, { status: newStatus, updated_at: new Date().toISOString() });
+            wrap.remove();
+            await fetchRecommendations(reviewId);
+            alert('Recommendation status updated.');
+            // Go back to the review details screen
+            await showReviewDetails(reviewId, caseId); 
+        } catch (e) { 
+            alert('Status update failed: ' + e.message); 
+        }
     };
 }
 
@@ -962,20 +987,27 @@ async function renderReports() {
       <div class="content-page">
         <h1 class="page-title mb-6">Reports & Analytics</h1>
         <div class="card report-info-card">
-          <p class="text-lg text-gray-600">
+          <h3 class="card-title">MPDSR Reporting Summary</h3>
+          <p class="text-lg text-gray-600 mt-2">
             This section will contain **Weekly Trend Charts**, **Recommendation Completion Rate**
             visualizations, and the **Downloadable Reports** (PDF/CSV) as outlined.
           </p>
-          <p class="mt-4 text-sm text-gray-500">
-            Next step: implement data fetching and charting library (like Chart.js) here.
-          </p>
+          <div class="mt-4">
+            <button class="secondary-btn">Download Weekly PDF</button>
+            <button class="secondary-btn">Export Raw Data (CSV)</button>
+          </div>
+        </div>
+
+        <h2 class="section-title">Case Volume Trend (Placeholder)</h2>
+        <div class="chart-container">
+            <p class="text-center text-gray-500 mt-4">Chart implementation using Chart.js or similar will go here.</p>
         </div>
       </div>
     `);
 }
 
 /* ===========================
-    User Management View (REUSED)
+    User Management View
     =========================== */
 
 async function renderUserManagement() {
@@ -997,7 +1029,7 @@ async function renderUserManagement() {
     <div class="content-page">
       <div class="page-header flex-spaced">
         <h1 class="page-title">User Management</h1>
-        <button id="newUserBtn" class="primary-btn">Add User</button>
+        <button id="newUserBtn" class="primary-btn">Add User (TBA)</button>
       </div>
       
       <div class="card table-container">
@@ -1015,8 +1047,8 @@ async function renderUserManagement() {
     </div>
   `);
   
-  // Attach listeners for user management views (e.g., editing/adding users)
-  // ...
+  // NOTE: User editing modal logic would be attached here if implemented.
+  $('#newUserBtn').onclick = () => alert("User creation function requires Supabase Admin integration (RLS/Functions) and is placeholder for now.");
 }
 
 // Kick off the application
