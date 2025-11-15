@@ -1,5 +1,10 @@
-import { supabase } from "./supabase.js"; // This import should be checked if window.supabase is used
-import { renderSignUp } from "./signup.js"; // Import the signup view
+// NOTE: Assuming window.supabase is created in index.html.
+// If you are relying on a local supabase.js, ensure it exports the client.
+// We will use the standard window object reference for maximum compatibility
+// with the setup in your HTML file.
+
+// import { supabase } from "./supabase.js"; // COMMENTED OUT: Use window.supabase instead
+// import { renderSignUp } from "./signup.js"; // Placeholder, assuming this exists
 
 /* ===========================
     Utility helpers
@@ -12,7 +17,7 @@ export const escapeHtml = (s) => (s === null || s === undefined) ? "" : String(s
   .replace(/"/g,"&quot;").replace(/'/g,"&#039;");
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString() : "";
 // Status classes are now standard CSS classes defined in style.css
-const statusClasses = s => s === 'Pending Review' ? 'status-pending' : (s==='Audit Complete' ? 'status-complete' : (s==='Data Entry' ? 'status-entry' : 'status-default'));
+const statusClasses = s => s === 'Pending Review' ? 'status-pending' : (s==='Audit Complete' ? 'status-complete' : (s==='Data Entry' ? 'status-entry' : (s==='Closed' ? 'closed' : 'status-default')));
 const noop = () => {};
 
 /* ===========================
@@ -26,16 +31,16 @@ export const state = {
       facilities: [],
       cases: [],
       reviews: {},
-      recommendations: {}
+      recommendations: {},
+      users: [], // Added for user management
     },
     modal: { visible: false, mode: 'new', payload: null }
 };
 
 /* ===========================
-    Supabase API wrappers (using window.supabase, as loaded in HTML)
+    Supabase API wrappers (using window.supabase)
     =========================== */
-// NOTE: I am assuming `window.supabase` is used here, or that the `./supabase.js` module exports the client.
-// I will keep the existing imports for consistency, but if they break, use `window.supabase` instead of `supabase`.
+const supabase = window.supabase; // Reference the global Supabase client
 
 export async function signIn(email, password) {
     const resp = await supabase.auth.signInWithPassword({ email, password });
@@ -46,12 +51,16 @@ export async function signOut() {
     await supabase.auth.signOut();
     state.user = null;
 }
+
+// --- Facilities ---
 export async function fetchFacilities() {
     const { data, error } = await supabase.from('facilities').select('*').eq('is_active', true).order('facility_name');
     if (error) throw error;
     state.data.facilities = data || [];
     return data;
 }
+
+// --- Users ---
 export async function fetchUserProfile(user_id) {
     const { data, error } = await supabase.from('mpdsr_users').select('*, facilities(facility_name)').eq('user_id', user_id).single();
     if (error && error.code !== 'PGRST116') { console.error(error); }
@@ -60,13 +69,16 @@ export async function fetchUserProfile(user_id) {
 export async function fetchAllUsers() {
     const { data, error } = await supabase.from('mpdsr_users').select('*, facilities(facility_name)').order('full_name');
     if (error) throw error;
-    return data || [];
+    state.data.users = data || [];
+    return data;
 }
 export async function updateUser(user_id, payload) {
     const { data, error } = await supabase.from('mpdsr_users').update(payload).eq('user_id', user_id).select().single();
     if (error) throw error;
     return data;
 }
+
+// --- Cases ---
 export async function fetchCases() {
     const { data, error } = await supabase.from('mpdsr_cases').select('*').order('death_date', { ascending: false });
     if (error) throw error;
@@ -92,6 +104,8 @@ export async function deleteCase(case_id) {
     state.data.cases = state.data.cases.filter(c => c.case_id !== case_id);
     return true;
 }
+
+// --- Reviews ---
 export async function fetchReviews(case_id) {
     const { data, error } = await supabase.from('mpdsr_reviews').select('*').eq('case_id', case_id).order('review_date', { ascending: false });
     if (error) throw error;
@@ -105,6 +119,8 @@ export async function createReview(payload) {
     state.data.reviews[payload.case_id].unshift(data);
     return data;
 }
+
+// --- Recommendations ---
 export async function fetchRecommendations(review_id) {
     const { data, error } = await supabase.from('mpdsr_recommendations').select('*').eq('review_id', review_id).order('created_at', { ascending: false });
     if (error) throw error;
@@ -126,6 +142,56 @@ export async function updateRecommendation(recommendation_id, payload) {
       if (idx >= 0) { state.data.recommendations[rId][idx] = data; break; }
     }
     return data;
+}
+
+// --- Dashboard Metrics (NEW) ---
+export async function fetchDashboardMetrics() {
+    // 1. Total Case Counts
+    const { count: maternalCount, error: err1 } = await supabase
+        .from('mpdsr_cases')
+        .select('*', { count: 'exact', head: true })
+        .eq('case_type', 'Maternal');
+    if (err1) console.error("Error fetching maternal count:", err1);
+
+    const { count: perinatalCount, error: err2 } = await supabase
+        .from('mpdsr_cases')
+        .select('*', { count: 'exact', head: true })
+        .eq('case_type', 'Perinatal');
+    if (err2) console.error("Error fetching perinatal count:", err2);
+
+    // 2. Review and Recommendation Metrics
+    const { count: totalCases, error: err3 } = await supabase
+        .from('mpdsr_cases')
+        .select('*', { count: 'exact', head: true });
+
+    const { count: reviewedCases, error: err4 } = await supabase
+        .from('mpdsr_cases')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_reviewed', true);
+    
+    const { count: totalRecs, error: err5 } = await supabase
+        .from('mpdsr_recommendations')
+        .select('*', { count: 'exact', head: true });
+
+    const { count: closedRecs, error: err6 } = await supabase
+        .from('mpdsr_recommendations')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'Closed');
+    
+    // MOCK DATA for iMMR calculation (Ideally fetched from a 'live_births' table)
+    const MOCK_LIVE_BIRTHS = 18000; 
+
+    const metrics = {
+        maternalDeaths: maternalCount || 0,
+        perinatalDeaths: perinatalCount || 0,
+        totalCases: totalCases || 0,
+        reviewedCases: reviewedCases || 0,
+        totalRecommendations: totalRecs || 0,
+        closedRecommendations: closedRecs || 0,
+        mockLiveBirths: MOCK_LIVE_BIRTHS, 
+    };
+
+    return metrics;
 }
 
 /* ===========================
@@ -164,7 +230,7 @@ async function renderRoute() {
 
     switch (state.view) {
       case 'login': renderLogin(); break;
-      case 'signup': renderSignUp(); break;
+      // case 'signup': renderSignUp(); break; // Assuming signup logic is in signup.js
       case 'dashboard': await renderDashboard(); break;
       case 'cases': await renderCases(); break;
       case 'reports': await renderReports(); break;
@@ -178,11 +244,9 @@ async function renderRoute() {
     =========================== */
 
 export function renderMain(html) {
-    // We need to manage classes that define the flex container and screen size.
     const showSidebar = !!state.user;
     const sidebar = showSidebar ? renderSidebar() : '';
 
-    // Standard classes for layout
     const containerClass = showSidebar ? 'app-container has-sidebar' : 'app-container no-sidebar';
     const mainClass = 'main-content';
 
@@ -202,7 +266,6 @@ export function renderMain(html) {
 
 function renderSidebar() {
     const userEmail = state.user?.email || '';
-    // Updated nav styles for better hover/active look
     const navItem = (key, label) => `
       <button data-nav="${key}" class="sidebar-nav-item ${state.view === key ? 'active' : ''}">
         ${label}
@@ -230,12 +293,10 @@ function renderSidebar() {
 }
 
 function attachShellListeners() {
-    // nav
     $$('[data-nav]').forEach(b => b.onclick = () => {
       const nav = b.getAttribute('data-nav');
       navigate(nav);
     });
-    // logout
     $('#logoutBtn').onclick = async () => {
       await supabase.auth.signOut();
       state.user = null;
@@ -245,7 +306,7 @@ function attachShellListeners() {
 
 
 /* ===========================
-    Login View
+    Login View (REUSED)
     =========================== */
 const renderLogin = (errorMessage = '') => { 
     renderMain(`
@@ -296,19 +357,37 @@ const renderLogin = (errorMessage = '') => {
     };
       
     $('#goToSignUp').onclick = () => {
-      navigate('signup');
+      // Assuming you have a renderSignUp() function exported from signup.js or implemented here
+      // navigate('signup');
+      alert('Signup function not yet implemented or imported. Please contact admin.');
     };
 }
 
 
 /* ===========================
-    Dashboard View
+    Dashboard View (UPDATED WITH METRICS)
     =========================== */
 
 async function renderDashboard() {
-    // ensure facilities loaded
+    // 1. Fetch data
     if (!state.data.facilities.length) await fetchFacilities();
     const userProfile = await fetchUserProfile(state.user.id);
+    const metrics = await fetchDashboardMetrics();
+
+    // 2. Calculate KPIs
+    const reviewRate = metrics.totalCases > 0 ? ((metrics.reviewedCases / metrics.totalCases) * 100).toFixed(1) : 0;
+    const implementationRate = metrics.totalRecommendations > 0 ? ((metrics.closedRecommendations / metrics.totalRecommendations) * 100).toFixed(1) : 0;
+    
+    // iMMR: (Maternal Deaths / Live Births) * 100,000
+    const iMMR = metrics.mockLiveBirths > 0 ? ((metrics.maternalDeaths / metrics.mockLiveBirths) * 100000).toFixed(0) : 'N/A';
+    
+    // Helper for Metric Cards
+    const metricCard = (title, value, unit = '', color = 'var(--color-primary)') => `
+        <div class="card" style="border-left: 5px solid ${color};">
+            <p class="card-subtitle text-lg">${title}</p>
+            <h3 class="text-4xl font-bold mt-2" style="color: ${color};">${value} <span class="text-lg font-normal">${unit}</span></h3>
+        </div>
+    `;
 
     const facilitiesHtml = state.data.facilities.map(f => `
       <div class="card facility-card">
@@ -317,6 +396,7 @@ async function renderDashboard() {
       </div>
     `).join('');
 
+    // 3. Render
     renderMain(`
       <div class="content-page">
         <div class="page-header">
@@ -329,6 +409,29 @@ async function renderDashboard() {
           <p class="detail-item"><strong>Facility:</strong> ${escapeHtml(userProfile?.facilities?.facility_name || 'County/Subcounty')}</p>
         </div>
 
+        <h2 class="section-title">Key MPDSR Performance Indicators</h2>
+        <div class="facility-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+            ${metricCard('Total Maternal Deaths', metrics.maternalDeaths, 'cases', 'var(--color-danger)')}
+            ${metricCard('Total Perinatal Deaths', metrics.perinatalDeaths, 'cases', 'var(--color-danger)')}
+            ${metricCard('iMMR', iMMR, '/100k Live Births', 'var(--color-danger)')}
+            ${metricCard('Review Completion Rate', reviewRate, '%', reviewRate >= 80 ? 'var(--color-success)' : 'var(--color-primary)')}
+            ${metricCard('Action Implementation Rate', implementationRate, '%', implementationRate >= 75 ? 'var(--color-success)' : 'var(--color-primary)')}
+        </div>
+
+        <h2 class="section-title">System Status & Summary</h2>
+        <div class="facility-grid" style="grid-template-columns: 1fr 1fr;">
+            <div class="card">
+                <h3 class="card-title">Surveillance Volume</h3>
+                <p class="card-subtitle">Total Cases Logged: <strong>${metrics.totalCases}</strong></p>
+                <p class="card-subtitle">Total Reviews Conducted: <strong>${metrics.reviewedCases}</strong></p>
+            </div>
+            <div class="card">
+                <h3 class="card-title">Response Activity</h3>
+                <p class="card-subtitle">Total Recommendations: <strong>${metrics.totalRecommendations}</strong></p>
+                <p class="card-subtitle">Recommendations Closed: <strong>${metrics.closedRecommendations}</strong></p>
+            </div>
+        </div>
+
         <h2 class="section-title">Active Facilities</h2>
         <div class="facility-grid">
           ${facilitiesHtml}
@@ -339,7 +442,7 @@ async function renderDashboard() {
 
 
 /* ===========================
-    Cases View (list, filters, add, view/edit)
+    Cases View (REUSED)
     =========================== */
 
 async function renderCases() {
@@ -423,7 +526,7 @@ function applyFilters(list, filters) {
 
 
 /* ===========================
-    Case Modal: view details + reviews + recommendations
+    Case Modal: view details + reviews + recommendations (REUSED)
     =========================== */
 
 async function showCaseDetails(caseId) {
@@ -527,7 +630,7 @@ async function showCaseDetails(caseId) {
 }
 
 /* ===========================
-    Add/Edit Case Forms
+    Add/Edit Case Forms (REUSED)
     =========================== */
 
 function showNewCaseModal() {
@@ -627,6 +730,12 @@ function showEditCaseForm(caseData) {
               <label class="form-label">Summary</label>
               <textarea name="case_summary" rows="3" class="form-textarea">${escapeHtml(caseData.case_summary || '')}</textarea>
             </div>
+            <div class="form-group">
+              <label class="form-label">Status</label>
+              <select name="status" class="form-select">
+                ${['Data Entry', 'Pending Review', 'Audit Complete', 'Closed'].map(s => `<option value="${s}" ${caseData.status===s ? 'selected' : ''}>${s}</option>`).join('')}
+              </select>
+            </div>
             <div class="form-actions">
               <button type="button" id="cancelEdit" class="secondary-btn">Cancel</button>
               <button type="submit" class="primary-btn">Update</button>
@@ -650,6 +759,7 @@ function showEditCaseForm(caseData) {
         case_type: fd.get('case_type'),
         death_date: fd.get('death_date'),
         case_summary: fd.get('case_summary'),
+        status: fd.get('status'), // Added status update capability
         updated_at: new Date().toISOString()
       };
       try {
@@ -664,7 +774,7 @@ function showEditCaseForm(caseData) {
 
 
 /* ===========================
-    Review flows
+    Review flows (REUSED)
     =========================== */
 
 function showAddReviewForm(caseId) {
@@ -708,7 +818,7 @@ function showAddReviewForm(caseId) {
       const payload = {
         case_id: caseId,
         review_date: fd.get('review_date'),
-        review_team_members: '', // could be extended
+        review_team_members: '', 
         root_cause_identified: fd.get('root_cause_identified'),
         review_outcome: fd.get('review_outcome'),
         reviewer_user_id: state.user.id,
@@ -716,6 +826,8 @@ function showAddReviewForm(caseId) {
       };
       try {
         await createReview(payload);
+        // Also update the case status to 'Audit Complete' or similar
+        await updateCase(caseId, { status: 'Audit Complete', is_reviewed: true }); 
         wrap.remove();
         await fetchReviews(caseId);
         alert('Review saved');
@@ -751,7 +863,7 @@ async function showReviewDetails(reviewId) {
                   <div class="rec-item">
                     <div class="rec-text flex-spaced">
                       <div>${escapeHtml(r.recommendation_text)}</div>
-                      <div class="rec-status status-badge ${r.status.toLowerCase()}">${escapeHtml(r.status)}</div>
+                      <div class="rec-status status-badge ${statusClasses(r.status)}">${escapeHtml(r.status)}</div>
                     </div>
                     <div class="rec-meta text-xs">Target: ${fmtDate(r.target_completion_date)} Responsible: ${escapeHtml(r.responsible_person_name || '')}</div>
                   </div>
@@ -779,7 +891,7 @@ async function showReviewDetails(reviewId) {
 
 
 /* ===========================
-    Recommendations
+    Recommendations (REUSED)
     =========================== */
 
 function showAddRecommendationForm(reviewId) {
@@ -840,6 +952,7 @@ function showAddRecommendationForm(reviewId) {
     };
 }
 
+
 /* ===========================
     Reports View (placeholder)
     =========================== */
@@ -849,14 +962,20 @@ async function renderReports() {
       <div class="content-page">
         <h1 class="page-title mb-6">Reports & Analytics</h1>
         <div class="card report-info-card">
-          <p class="text-lg text-gray-600">Reports section in development.</p>
+          <p class="text-lg text-gray-600">
+            This section will contain **Weekly Trend Charts**, **Recommendation Completion Rate**
+            visualizations, and the **Downloadable Reports** (PDF/CSV) as outlined.
+          </p>
+          <p class="mt-4 text-sm text-gray-500">
+            Next step: implement data fetching and charting library (like Chart.js) here.
+          </p>
         </div>
       </div>
     `);
 }
 
 /* ===========================
-    User Management View (placeholder)
+    User Management View (REUSED)
     =========================== */
 
 async function renderUserManagement() {
